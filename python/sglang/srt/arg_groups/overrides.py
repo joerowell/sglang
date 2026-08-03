@@ -1132,6 +1132,21 @@ def _olmo2_overrides(server_args: Any, hf_config: Any) -> dict:
     return overrides
 
 
+@_register_for("LagunaForCausalLM")
+def _laguna_overrides(server_args: Any, hf_config: Any) -> dict:
+    overrides: Dict[str, Any] = {}
+    # sm120: flashinfer SWA masking emits zero attention output on Laguna's
+    # sliding-window layers. triton crashes on decode here, so use torch_native
+    # (SWA-correct, slower). Other arches keep the default.
+    if server_args.attention_backend is None and is_cuda() and is_sm120_supported():
+        overrides["attention_backend"] = "torch_native"
+        logger.info(
+            f"Use torch_native attention backend for {hf_config.architectures[0]} on "
+            "sm120 (flashinfer SWA zero-output; triton crashes on decode here)."
+        )
+    return overrides
+
+
 @register_model_override_predicate(
     lambda arch: "Step3p5ForCausalLM" in arch
     or "Step3p7ForConditionalGeneration" in arch

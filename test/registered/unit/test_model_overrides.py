@@ -873,6 +873,35 @@ class TestGoldenModelOverrides(_IsolatedPublish):
         with patch.object(overrides_module, "is_sm120_supported", return_value=False):
             self.assertEqual(_deepseek_v4_sm120_moe(_view()), {})
 
+    def test_laguna_sm120_forces_torch_native(self):
+        # sm120: flashinfer SWA masking is broken, so Laguna forces torch_native.
+        from sglang.srt.arg_groups.overrides import _laguna_overrides
+
+        hf = SimpleNamespace(architectures=["LagunaForCausalLM"])
+
+        def _args(**kw):
+            defaults = dict(attention_backend=None)
+            defaults.update(kw)
+            return SimpleNamespace(**defaults)
+
+        with patch.object(overrides_module, "is_cuda", return_value=True):
+            with patch.object(
+                overrides_module, "is_sm120_supported", return_value=True
+            ):
+                self.assertEqual(
+                    _laguna_overrides(_args(), hf),
+                    {"attention_backend": "torch_native"},
+                )
+                # an explicit user backend is never overwritten
+                self.assertEqual(
+                    _laguna_overrides(_args(attention_backend="flashinfer"), hf), {}
+                )
+            # off sm120 the default path is left alone
+            with patch.object(
+                overrides_module, "is_sm120_supported", return_value=False
+            ):
+                self.assertEqual(_laguna_overrides(_args(), hf), {})
+
     def test_nemotron_h_overrides_at_callable_level(self):
         from sglang.srt.arg_groups.overrides import _nemotron_h_overrides
 
